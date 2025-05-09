@@ -1,0 +1,16 @@
+{
+    "csp-report": {
+      "document-uri": "https://example.com/main_page.html",
+      "referrer": "https://google.com",
+      "violated-directive": "style-src-attr",
+      "effective-directive": "style-src-attr",
+      "original-policy": "default-src 'self'; style-src 'self' https://trusted.cdn.com; report-uri https://localhost/csp-report",
+      "disposition": "enforce",
+      "blocked-uri": "inline",
+      "line-number": 45,
+      "column-number": 10,
+      "source-file": "https://example.com/main_page.html",
+      "status-code": 0,
+      "script-sample": "style='color: red'"
+    }
+  }

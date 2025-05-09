@@ -1,0 +1,12 @@
+{
+    "csp-report": {
+      "document-uri": "https://example.com/gallery.html",
+      "referrer": "https://example.com/main_page.html",
+      "violated-directive": "img-src",
+      "effective-directive": "img-src",
+      "original-policy": "default-src 'self'; img-src 'self' https://pictures.com; report-uri https://localhost/csp-report",
+      "disposition": "report",
+      "blocked-uri": "https://untrusted-source.com/image.jpg",
+      "status-code": 200
+    }
+  }

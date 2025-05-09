@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSP Violation Reports</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; word-wrap: break-word; }
+        th { background-color: #f2f2f2; }
+        th a { text-decoration: none; color: black; }
+        th a:hover { text-decoration: underline; }
+        .sort-asc::after { content: " ▲"; }
+        .sort-desc::after { content: " ▼"; }
+        .error { color: red; }
+        .no-reports { color: #777; }
+        .raw-report {
+            max-height: 100px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            padding: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .filter-form { margin-bottom: 20px; }
+        .filter-form label { margin-right: 10px; }
+        .filter-form input[type="text"] { padding: 5px; margin-right: 10px; }
+        .filter-form input[type="submit"] { padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <h1>CSP Violation Reports</h1>
+
+    <form method="GET" action="{{ url_for('index') }}" class="filter-form">
+        <label for="violated_directive_filter">Filter by Violated Directive:</label>
+        <input type="text" id="violated_directive_filter" name="violated_directive_filter" value="{{ current_filter_vd if current_filter_vd else '' }}">
+        {% if current_sort_by %}
+            <input type="hidden" name="sort_by" value="{{ current_sort_by }}">
+            <input type="hidden" name="sort_order" value="{{ current_sort_order }}">
+        {% endif %}
+        <input type="submit" value="Filter">
+        {% if current_filter_vd %}
+            <a href="{{ url_for('index', sort_by=current_sort_by, sort_order=current_sort_order) }}">Clear Filter</a>
+        {% endif %}
+    </form>
+    {% if error %}
+        <p class="error">Error fetching reports: {{ error }}</p>
+    {% elif reports %}
+        <table>
+            <thead>
+                <tr>
+                    <th>
+                        <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='id', sort_order='asc' if current_sort_by == 'id' and current_sort_order == 'desc' else 'desc') }}"
+                           class="{{ 'sort-asc' if current_sort_by == 'id' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'id' and current_sort_order == 'desc' else '') }}">ID</a>
+                    </th>
+                    <th>
+                        <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='received_at', sort_order='asc' if current_sort_by == 'received_at' and current_sort_order == 'desc' else 'desc') }}"
+                           class="{{ 'sort-asc' if current_sort_by == 'received_at' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'received_at' and current_sort_order == 'desc' else '') }}">Received At (UTC)</a>
+                    </th>
+                    <th>Document URI</th> <th>
+                        <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='violated_directive', sort_order='asc' if current_sort_by == 'violated_directive' and current_sort_order == 'desc' else 'desc') }}"
+                           class="{{ 'sort-asc' if current_sort_by == 'violated_directive' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'violated_directive' and current_sort_order == 'desc' else '') }}">Violated Directive</a>
+                    </th>
+                    <th>Blocked URI</th> <th>Original Policy</th> <th>Raw Report (JSON)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in reports %}
+                <tr>
+                    <td>{{ report.id }}</td>
+                    <td>{{ report.received_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>{{ report.document_uri }}</td>
+                    <td>{{ report.violated_directive }}</td>
+                    <td>{{ report.blocked_uri }}</td>
+                    <td>{{ report.original_policy }}</td>
+                    <td><pre class="raw-report">{{ report.raw_report | tojson(indent=2) }}</pre></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="no-reports">No CSP violation reports found {% if current_filter_vd %}matching your filter "{{ current_filter_vd }}"{% endif %}.</p>
+    {% endif %}
+</body>
+</html>

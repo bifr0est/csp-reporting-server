@@ -90,6 +90,29 @@ services:
       - csp-net
     restart: unless-stopped
 
+  csp-dashboard:
+    build:
+      context: ./csp-dashboard-app
+    container_name: csp_dashboard
+    ports:
+      - "5001:5001" # Expose dashboard on host port 5001
+    volumes:
+      - ./csp-dashboard-app:/app # For live dev changes
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=${FLASK_ENV:-production} # Set to development for Flask's debugger if needed
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-csp_reports_db}
+      - DB_USER=${DB_USER:-csp_user} # Using same user for now
+      - DB_PASS=${DB_PASS:-csp_pass} # Using same user for now
+    depends_on:
+      - postgres # Depends on postgres to be started
+    networks:
+      - csp-net
+    restart: unless-stopped
+
 volumes:
   rabbitmq_data:
   postgres_data:

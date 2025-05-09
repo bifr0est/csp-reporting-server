@@ -1,0 +1,12 @@
+{
+    "csp-report": {
+      "document-uri": "https://example.com/app/dashboard_area",
+      "referrer": "",
+      "violated-directive": "connect-src",
+      "effective-directive": "connect-src",
+      "original-policy": "default-src 'none'; connect-src 'self' https://api.example.com; script-src 'self'; report-uri https://localhost/csp-report",
+      "disposition": "enforce",
+      "blocked-uri": "https://thirdparty-analytics.com/track",
+      "status-code": 0
+    }
+  }
