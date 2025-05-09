@@ -1,0 +1,16 @@
+{
+  "csp-report": {
+    "document-uri": "https://example.com/your-test-page.html",
+    "referrer": "https://your-referrer.com",
+    "violated-directive": "script-src-elem",
+    "effective-directive": "script-src-elem",
+    "original-policy": "default-src 'self'; report-uri https://localhost/csp-report",
+    "disposition": "report",
+    "blocked-uri": "https://evil.com/malicious.js",
+    "line-number": 22,
+    "column-number": 11,
+    "source-file": "https://example.com/your-test-page.html",
+    "status-code": 0,
+    "script-sample": "var x = 1;"
+  }
+}

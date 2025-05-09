@@ -1,0 +1,99 @@
+services:
+  nginx:
+    image: nginx:stable # Using a specific alpine version
+    container_name: csp_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - csp-receiver
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  csp-receiver:
+    build:
+      context: ./csp-receiver-app
+    container_name: csp_receiver
+    expose: # Expose port internally for Nginx
+      - "5000"
+    volumes:
+      - ./csp-receiver-app:/app # For live dev changes
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensures print statements and logs appear in Docker logs without delay
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=user
+      - RABBITMQ_PASS=password
+      - QUEUE_NAME=csp_reports_queue
+    depends_on:
+      - rabbitmq
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine # Using a specific alpine version
+    container_name: csp_rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port for apps
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=password
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  csp-worker:
+    build:
+      context: ./csp-worker-app
+    container_name: csp_worker
+    volumes:
+      - ./csp-worker-app:/app # For live dev changes
+    environment:
+      - PYTHONUNBUFFERED=1
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=user
+      - RABBITMQ_PASS=password
+      - QUEUE_NAME=csp_reports_queue
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=csp_reports_db
+      - DB_USER=csp_user
+      - DB_PASS=csp_pass
+    depends_on:
+      - rabbitmq
+      - postgres
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine # Using a specific alpine version
+    container_name: csp_postgres
+    ports: # Expose for direct DB inspection during dev
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=csp_reports_db
+      - POSTGRES_USER=csp_user
+      - POSTGRES_PASSWORD=csp_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+
+networks:
+  csp-net:
+    driver: bridge
