@@ -1,0 +1,28 @@
+PUT _index_template/csp_violations_template
+{
+  "index_patterns": ["csp-violations-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "_source": { "enabled": true },
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "document-uri": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 }}},
+        "effective-directive": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 }}},
+        "original-policy": { "type": "text", "index": false },
+        "violated-directive": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 }}},
+        "blocked-uri": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 }}},
+        "disposition": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 }}},
+        "status-code": { "type": "integer" },
+        "source-file": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 }}},
+        "line-number": { "type": "integer" },
+        "column-number": { "type": "integer" },
+        "referrer": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 }}},
+        "script-sample": { "type": "text", "index": false }
+      }
+    }
+  }
+}
