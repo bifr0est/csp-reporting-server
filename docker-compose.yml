@@ -1,6 +1,9 @@
+version: '3.8'
+
 services:
   nginx:
-    image: nginx:stable # Using a specific alpine version
+    # ... (no changes here) ...
+    image: nginx:1.27-alpine
     container_name: csp_nginx
     ports:
       - "80:80"
@@ -15,20 +18,24 @@ services:
     restart: unless-stopped
 
   csp-receiver:
+    # ... (no changes here, but ensure its QUEUE_NAME matches worker's) ...
     build:
       context: ./csp-receiver-app
     container_name: csp_receiver
-    expose: # Expose port internally for Nginx
+    expose:
       - "5000"
     volumes:
-      - ./csp-receiver-app:/app # For live dev changes
+      - ./csp-receiver-app:/app
     environment:
-      - PYTHONUNBUFFERED=1 # Ensures print statements and logs appear in Docker logs without delay
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=user
-      - RABBITMQ_PASS=password
-      - QUEUE_NAME=csp_reports_queue
+      - RABBITMQ_USER=${RABBITMQ_USER:-user}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:-password}
+      - QUEUE_NAME=${QUEUE_NAME:-csp_reports_queue}
+      - RABBITMQ_CONNECTION_ATTEMPTS=${RABBITMQ_CONNECTION_ATTEMPTS:-3}
+      - RABBITMQ_RETRY_DELAY=${RABBITMQ_RETRY_DELAY:-5}
     depends_on:
       - rabbitmq
     networks:
@@ -36,16 +43,17 @@ services:
     restart: unless-stopped
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine # Using a specific alpine version
+    # ... (no changes here) ...
+    image: rabbitmq:3.13-management-alpine
     container_name: csp_rabbitmq
     ports:
-      - "5672:5672"   # AMQP port for apps
-      - "15672:15672" # Management UI
+      - "5672:5672"
+      - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq/
     environment:
-      - RABBITMQ_DEFAULT_USER=user
-      - RABBITMQ_DEFAULT_PASS=password
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-user}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-password}
     networks:
       - csp-net
     restart: unless-stopped
@@ -55,67 +63,81 @@ services:
       context: ./csp-worker-app
     container_name: csp_worker
     volumes:
-      - ./csp-worker-app:/app # For live dev changes
+      - ./csp-worker-app:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=user
-      - RABBITMQ_PASS=password
-      - QUEUE_NAME=csp_reports_queue
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=csp_reports_db
-      - DB_USER=csp_user
-      - DB_PASS=csp_pass
+      - RABBITMQ_USER=${RABBITMQ_USER:-user}
+      - RABBITMQ_PASS=${RABBITMQ_PASS:-password}
+      - QUEUE_NAME=${QUEUE_NAME:-csp_reports_queue}
+      - RABBITMQ_RETRY_DELAY=${RABBITMQ_RETRY_DELAY:-10}
+      # --- Elasticsearch Config ---
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200 # Points to the ES service below
+      # - ELASTICSEARCH_USER= # Optional
+      # - ELASTICSEARCH_PASS= # Optional
+      - ELASTICSEARCH_INDEX_PREFIX=csp-violations
+      - ES_CONNECTION_RETRIES=${ES_CONNECTION_RETRIES:-5} # Increased retries for ES
+      - ES_RETRY_DELAY=${ES_RETRY_DELAY:-10}
     depends_on:
       - rabbitmq
-      - postgres
+      - elasticsearch # ADDED: Worker depends on Elasticsearch starting
     networks:
       - csp-net
     restart: unless-stopped
 
-  postgres:
-    image: postgres:16-alpine # Using a specific alpine version
-    container_name: csp_postgres
-    ports: # Expose for direct DB inspection during dev
-      - "5432:5432"
+  # --- OPTIONAL: Local Elasticsearch and Kibana for testing ---
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0 # Use a version compatible with your client
+    container_name: csp_elasticsearch
     environment:
-      - POSTGRES_DB=csp_reports_db
-      - POSTGRES_USER=csp_user
-      - POSTGRES_PASSWORD=csp_pass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - csp-net
-    restart: unless-stopped
-
-  csp-dashboard:
-    build:
-      context: ./csp-dashboard-app
-    container_name: csp_dashboard
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Adjust as needed, can be demanding
+      - xpack.security.enabled=false # DISABLES security for dev - NOT FOR PRODUCTION
+      - "DISABLE_SECURITY_PLUGIN=true" # For newer versions if xpack.security.enabled is not enough
+    ulimits: # Recommended for Elasticsearch
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
-      - "5001:5001" # Expose dashboard on host port 5001
+      - "9200:9200"
+      # - "9300:9300" # Transport port, not always needed to be exposed
     volumes:
-      - ./csp-dashboard-app:/app # For live dev changes
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - csp-net
+    restart: unless-stopped
+    healthcheck: # Basic healthcheck
+            test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
+
+  kibana: # Optional, for viewing data in Elasticsearch
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: csp_kibana
+    ports:
+      - "5601:5601"
     environment:
-      - PYTHONUNBUFFERED=1
-      - FLASK_ENV=${FLASK_ENV:-production} # Set to development for Flask's debugger if needed
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-csp_reports_db}
-      - DB_USER=${DB_USER:-csp_user} # Using same user for now
-      - DB_PASS=${DB_PASS:-csp_pass} # Using same user for now
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200 # Points to your ES service
+      # If your ES has security enabled, you'll need user/pass here too:
+      # - ELASTICSEARCH_USERNAME=elastic 
+      # - ELASTICSEARCH_PASSWORD=your_es_password
     depends_on:
-      - postgres # Depends on postgres to be started
+      elasticsearch: # Kibana depends on Elasticsearch
+        condition: service_healthy # Wait for ES healthcheck to pass
     networks:
       - csp-net
     restart: unless-stopped
 
 volumes:
   rabbitmq_data:
-  postgres_data:
+  es_data: # ADDED for Elasticsearch persistence
 
 networks:
   csp-net:
