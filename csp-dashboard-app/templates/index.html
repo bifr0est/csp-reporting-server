@@ -58,11 +58,19 @@
                         <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='received_at', sort_order='asc' if current_sort_by == 'received_at' and current_sort_order == 'desc' else 'desc') }}"
                            class="{{ 'sort-asc' if current_sort_by == 'received_at' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'received_at' and current_sort_order == 'desc' else '') }}">Received At (UTC)</a>
                     </th>
-                    <th>Document URI</th> <th>
+                    <th>
+                        <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='document_uri', sort_order='asc' if current_sort_by == 'document_uri' and current_sort_order == 'desc' else 'desc') }}"
+                           class="{{ 'sort-asc' if current_sort_by == 'document_uri' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'document_uri' and current_sort_order == 'desc' else '') }}">Document URI</a>
+                    </th>
+                    <th>
                         <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='violated_directive', sort_order='asc' if current_sort_by == 'violated_directive' and current_sort_order == 'desc' else 'desc') }}"
                            class="{{ 'sort-asc' if current_sort_by == 'violated_directive' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'violated_directive' and current_sort_order == 'desc' else '') }}">Violated Directive</a>
                     </th>
-                    <th>Blocked URI</th> <th>Original Policy</th> <th>Raw Report (JSON)</th>
+                    <th>
+                        <a href="{{ url_for('index', violated_directive_filter=current_filter_vd, sort_by='blocked_uri', sort_order='asc' if current_sort_by == 'blocked_uri' and current_sort_order == 'desc' else 'desc') }}"
+                           class="{{ 'sort-asc' if current_sort_by == 'blocked_uri' and current_sort_order == 'asc' else ('sort-desc' if current_sort_by == 'blocked_uri' and current_sort_order == 'desc' else '') }}">Blocked URI</a>
+                    </th>
+                    <th>Original Policy</th> <th>Raw Report (JSON)</th>
                 </tr>
             </thead>
             <tbody>

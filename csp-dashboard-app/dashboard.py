@@ -24,8 +24,8 @@ ALLOWED_SORT_COLUMNS = {
     "id": "id",
     "received_at": "received_at",
     "violated_directive": "violated_directive",
-    "document_uri": "document_uri", # Example if you want to add more
-    "blocked_uri": "blocked_uri"   # Example if you want to add more
+    "document_uri": "document_uri",   # <-- ADDED
+    "blocked_uri": "blocked_uri"     # <-- ADDED
 }
 
 def get_db_connection():
@@ -90,16 +90,9 @@ def index():
             if conditions:
                 base_sql_query += " WHERE " + " AND ".join(conditions)
             
-            # Construct ORDER BY clause safely
-            # IMPORTANT: Do not directly inject sort_by_param or sort_order_param into the SQL string
-            # if they come from user input without validation against an allow-list.
-            # We have validated sort_by_param against ALLOWED_SORT_COLUMNS (mapping to actual db_column_to_sort)
-            # and sort_order_param to be 'asc' or 'desc'.
-            # However, for constructing the ORDER BY clause, psycopg2 doesn't parameterize identifiers
-            # or ASC/DESC keywords. So, we ensure they are safe through validation.
-            order_by_clause = f"ORDER BY {db_column_to_sort} {sort_order_param.upper()}" # .upper() for ASC/DESC
+            order_by_clause = f"ORDER BY {db_column_to_sort} {sort_order_param.upper()}"
             
-            final_sql_query = f"{base_sql_query} {order_by_clause} LIMIT 50;" # Add LIMIT after ORDER BY
+            final_sql_query = f"{base_sql_query} {order_by_clause} LIMIT 50;"
             
             logging.debug(f"Executing SQL: {final_sql_query} with params: {query_params}")
             cur.execute(final_sql_query, tuple(query_params))
@@ -124,8 +117,8 @@ def index():
                            reports=reports, 
                            error=db_error, 
                            current_filter_vd=violated_directive_filter,
-                           current_sort_by=sort_by_param,       # Pass current sort info
-                           current_sort_order=sort_order_param) # Pass current sort info
+                           current_sort_by=sort_by_param,
+                           current_sort_order=sort_order_param)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=(LOG_LEVEL == 'DEBUG'))
