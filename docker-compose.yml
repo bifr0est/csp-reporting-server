@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   nginx:
-    # ... (no changes here) ...
-    image: nginx:1.27-alpine
+    image: nginx:stable
     container_name: csp_nginx
     ports:
       - "80:80"
@@ -18,7 +15,6 @@ services:
     restart: unless-stopped
 
   csp-receiver:
-    # ... (no changes here, but ensure its QUEUE_NAME matches worker's) ...
     build:
       context: ./csp-receiver-app
     container_name: csp_receiver
@@ -29,31 +25,64 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
+      - RABBITMQ_NODES_CSV=${RABBITMQ_NODES_CSV:-rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672}
       - RABBITMQ_USER=${RABBITMQ_USER:-user}
       - RABBITMQ_PASS=${RABBITMQ_PASS:-password}
       - QUEUE_NAME=${QUEUE_NAME:-csp_reports_queue}
-      - RABBITMQ_CONNECTION_ATTEMPTS=${RABBITMQ_CONNECTION_ATTEMPTS:-3}
-      - RABBITMQ_RETRY_DELAY=${RABBITMQ_RETRY_DELAY:-5}
+      - RABBITMQ_CONNECTION_ATTEMPTS_PER_NODE=${RABBITMQ_CONNECTION_ATTEMPTS_PER_NODE:-3}
+      - RABBITMQ_RETRY_DELAY_PER_NODE=${RABBITMQ_RETRY_DELAY_PER_NODE:-5}
     depends_on:
-      - rabbitmq
+      - rabbitmq1
+      - rabbitmq2
+      - rabbitmq3
     networks:
       - csp-net
     restart: unless-stopped
 
-  rabbitmq:
-    # ... (no changes here) ...
-    image: rabbitmq:3.13-management-alpine
-    container_name: csp_rabbitmq
+  rabbitmq1:
+    image: rabbitmq:4.0-management-alpine
+    container_name: csp_rabbitmq1
+    hostname: rabbitmq1
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "15672:15672" # Management UI for node 1
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq/
+      - rabbitmq1_data:/var/lib/rabbitmq/
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-user}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-password}
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE:-SUPER_SECRET_COOKIE_VALUE_CHANGE_ME}
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  rabbitmq2:
+    image: rabbitmq:4.0-management-alpine
+    container_name: csp_rabbitmq2
+    hostname: rabbitmq2
+    volumes:
+      - rabbitmq2_data:/var/lib/rabbitmq/
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-user}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-password}
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE:-SUPER_SECRET_COOKIE_VALUE_CHANGE_ME}
+    depends_on:
+      - rabbitmq1
+    networks:
+      - csp-net
+    restart: unless-stopped
+
+  rabbitmq3:
+    image: rabbitmq:4.0-management-alpine
+    container_name: csp_rabbitmq3
+    hostname: rabbitmq3
+    volumes:
+      - rabbitmq3_data:/var/lib/rabbitmq/
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-user}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-password}
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE:-SUPER_SECRET_COOKIE_VALUE_CHANGE_ME}
+    depends_on:
+      - rabbitmq1
     networks:
       - csp-net
     restart: unless-stopped
@@ -67,77 +96,72 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
+      - RABBITMQ_NODES_CSV=${RABBITMQ_NODES_CSV:-rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672}
       - RABBITMQ_USER=${RABBITMQ_USER:-user}
       - RABBITMQ_PASS=${RABBITMQ_PASS:-password}
       - QUEUE_NAME=${QUEUE_NAME:-csp_reports_queue}
       - RABBITMQ_RETRY_DELAY=${RABBITMQ_RETRY_DELAY:-10}
-      # --- Elasticsearch Config ---
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200 # Points to the ES service below
-      # - ELASTICSEARCH_USER= # Optional
-      # - ELASTICSEARCH_PASS= # Optional
-      - ELASTICSEARCH_INDEX_PREFIX=csp-violations
-      - ES_CONNECTION_RETRIES=${ES_CONNECTION_RETRIES:-5} # Increased retries for ES
+      - RABBITMQ_CONNECTION_ATTEMPTS_PER_NODE=${RABBITMQ_CONNECTION_ATTEMPTS_PER_NODE:-3}
+      - RABBITMQ_RETRY_DELAY_PER_NODE=${RABBITMQ_RETRY_DELAY_PER_NODE:-5}
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS:-http://elasticsearch:9200}
+      - ELASTICSEARCH_INDEX_PREFIX=${ELASTICSEARCH_INDEX_PREFIX:-csp-violations}
+      - ES_CONNECTION_RETRIES=${ES_CONNECTION_RETRIES:-5}
       - ES_RETRY_DELAY=${ES_RETRY_DELAY:-10}
+      - BULK_MAX_SIZE=${BULK_MAX_SIZE:-100}
+      - BULK_MAX_SECONDS_FLUSH=${BULK_MAX_SECONDS_FLUSH:-10}
+      - PROCESS_DATA_EVENTS_TIMEOUT=${PROCESS_DATA_EVENTS_TIMEOUT:-1.0}
     depends_on:
-      - rabbitmq
-      - elasticsearch # ADDED: Worker depends on Elasticsearch starting
+      - rabbitmq1
+      - rabbitmq2
+      - rabbitmq3
+      - elasticsearch
     networks:
       - csp-net
     restart: unless-stopped
 
-  # --- OPTIONAL: Local Elasticsearch and Kibana for testing ---
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.28 # Use a version compatible with your client
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.28 # Updated to a specific 7.17.x patch
     container_name: csp_elasticsearch
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Adjust as needed, can be demanding
-      - xpack.security.enabled=false # DISABLES security for dev - NOT FOR PRODUCTION
-      - "DISABLE_SECURITY_PLUGIN=true" # For newer versions if xpack.security.enabled is not enough
-    ulimits: # Recommended for Elasticsearch
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - "DISABLE_SECURITY_PLUGIN=true" # May not be needed for 7.17.x if xpack.security.enabled=false works
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
     ports:
       - "9200:9200"
-      # - "9300:9300" # Transport port, not always needed to be exposed
     volumes:
       - es_data:/usr/share/elasticsearch/data
     networks:
       - csp-net
     restart: unless-stopped
-    healthcheck: # Basic healthcheck
-            test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
-            interval: 10s
-            timeout: 5s
-            retries: 10
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"] # Adjusted healthcheck
+      interval: 10s
+      timeout: 10s # Increased timeout for healthcheck
+      retries: 10
 
-
-  kibana: # Optional, for viewing data in Elasticsearch
-    image: docker.elastic.co/kibana/kibana:7.17.28
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.28 # Updated to a specific 7.17.x patch
     container_name: csp_kibana
     ports:
       - "5601:5601"
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200 # Points to your ES service
-      # If your ES has security enabled, you'll need user/pass here too:
-      # - ELASTICSEARCH_USERNAME=elastic 
-      # - ELASTICSEARCH_PASSWORD=your_es_password
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     depends_on:
-      elasticsearch: # Kibana depends on Elasticsearch
-        condition: service_healthy # Wait for ES healthcheck to pass
+      elasticsearch:
+        condition: service_healthy
     networks:
       - csp-net
     restart: unless-stopped
 
 volumes:
-  rabbitmq_data:
-  es_data: # ADDED for Elasticsearch persistence
+  rabbitmq1_data:
+  rabbitmq2_data:
+  rabbitmq3_data:
+  es_data:
 
 networks:
   csp-net:
