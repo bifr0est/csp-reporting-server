@@ -1,8 +1,9 @@
 from flask import Flask, request
 import pika
+from pika.exceptions import AMQPConnectionError, AMQPChannelError
 import os
 import logging
-import time # Not strictly needed in this version of app.py but often useful
+import json
 
 app = Flask(__name__)
 
@@ -66,15 +67,10 @@ def get_rabbitmq_connection():
     connection_params_list = get_rabbitmq_connection_params_list()
     try:
         connection = pika.BlockingConnection(connection_params_list)
-        # Access parameters of the successfully established connection via _impl.params
-        if hasattr(connection, '_impl') and connection._impl and hasattr(connection._impl, 'params'):
-            connected_params = connection._impl.params
-            logging.info(f"Successfully connected to RabbitMQ node: {connected_params.host}:{connected_params.port}")
-        else:
-            # Fallback if _impl.params isn't available (should be, but good to be safe)
-            logging.info("Successfully connected to RabbitMQ (node details unavailable via _impl.params).")
+        # Log successful connection without accessing private attributes
+        logging.info("Successfully connected to RabbitMQ cluster")
         return connection
-    except pika.exceptions.AMQPConnectionError as e:
+    except AMQPConnectionError as e:
         logging.error(f"Failed to connect to any configured RabbitMQ node: {e}", exc_info=True)
         raise # Re-raise to be handled by the caller
 
@@ -87,19 +83,46 @@ def receive_csp_report():
     content_type = request.content_type
     logging.info(f"Received request with Content-Type: {content_type}")
 
+    # Strict content type validation - only accept JSON formats for CSP reports
     if not (content_type == 'application/csp-report' or \
-            content_type == 'application/json' or \
-            content_type == 'text/plain'):
+            content_type == 'application/json'):
         logging.warning(f"Unsupported Media Type: {content_type}")
         return 'Unsupported Media Type', 415
 
     try:
+        # Limit request size to prevent DoS attacks
+        max_content_length = 10240  # 10KB limit for CSP reports
+        if request.content_length and request.content_length > max_content_length:
+            logging.warning(f"Request too large: {request.content_length} bytes")
+            return 'Request Entity Too Large', 413
+
         report_data_bytes = request.get_data()
         if not report_data_bytes:
             logging.warning("Received empty report data.")
             return 'Empty report data', 400
 
-        logging.info(f"Attempting to publish report (first 100 bytes): {report_data_bytes[:100]}")
+        # Validate that the payload is valid JSON before queueing
+        try:
+            report_json = json.loads(report_data_bytes.decode('utf-8'))
+            
+            # Basic CSP report structure validation
+            if not isinstance(report_json, dict):
+                logging.warning("Invalid CSP report: not a JSON object")
+                return 'Invalid CSP report format', 400
+                
+            # Check for either 'csp-report' field or direct CSP fields
+            if 'csp-report' not in report_json and 'violated-directive' not in report_json:
+                logging.warning("Invalid CSP report: missing required CSP fields")
+                return 'Invalid CSP report structure', 400
+                
+        except json.JSONDecodeError as e:
+            logging.warning(f"Invalid JSON in CSP report: {e}")
+            return 'Invalid JSON format', 400
+        except UnicodeDecodeError as e:
+            logging.warning(f"Invalid UTF-8 encoding in CSP report: {e}")
+            return 'Invalid character encoding', 400
+
+        logging.info(f"Attempting to publish valid CSP report (size: {len(report_data_bytes)} bytes)")
 
         try:
             with get_rabbitmq_connection() as connection:
@@ -114,14 +137,14 @@ def receive_csp_report():
                     routing_key=QUEUE_NAME,
                     body=report_data_bytes,
                     properties=pika.BasicProperties(
-                        delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE
+                        delivery_mode=2  # Persistent delivery
                     ))
                 logging.info(f"Successfully published report to RabbitMQ queue: {QUEUE_NAME}")
 
-        except pika.exceptions.AMQPConnectionError as e:
+        except AMQPConnectionError as e:
             logging.error(f"RabbitMQ connection error during publish: {e}", exc_info=True)
             return 'Message queueing service unavailable', 503
-        except pika.exceptions.AMQPChannelError as e:
+        except AMQPChannelError as e:
             logging.error(f"RabbitMQ channel error during publish: {e}", exc_info=True)
             return 'Error establishing channel with queueing service', 500
         except Exception as e: # Catch other errors from get_rabbitmq_connection or publish

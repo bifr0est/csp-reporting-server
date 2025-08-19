@@ -120,13 +120,13 @@ services:
     restart: unless-stopped
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.28 # Updated to a specific 7.17.x patch
+    image: elasticsearch:9.1.2
     container_name: csp_elasticsearch
     environment:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=false
-      - "DISABLE_SECURITY_PLUGIN=true" # May not be needed for 7.17.x if xpack.security.enabled=false works
+      - xpack.ml.enabled=false
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }
@@ -144,7 +144,7 @@ services:
       retries: 10
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:7.17.28 # Updated to a specific 7.17.x patch
+    image: kibana:9.1.2
     container_name: csp_kibana
     ports:
       - "5601:5601"
@@ -156,6 +156,17 @@ services:
     networks:
       - csp-net
     restart: unless-stopped
+
+  # --- Certbot for TLS-ALPN-01 (run manually) ---
+  certbot:
+    image: certbot/certbot:latest
+    container_name: csp_certbot
+    volumes:
+      - ./nginx/certs:/etc/letsencrypt
+    network_mode: host  # Required for TLS-ALPN-01
+    profiles:
+      - certbot  # Only run when explicitly called
+    command: certonly --standalone --preferred-challenges tls-alpn-01 --email ${CERTBOT_EMAIL:-admin@example.com} --agree-tos --no-eff-email -d ${DOMAIN_NAME:-localhost}
 
 volumes:
   rabbitmq1_data:
