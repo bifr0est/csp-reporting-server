@@ -5,7 +5,7 @@ A production-ready, dockerized solution for receiving, processing, and storing C
 ## 🏗️ Architecture
 
 ```
-CSP Reports → Nginx (SSL/TLS) → Flask App → RabbitMQ Cluster → Worker → Elasticsearch/Kafka
+CSP Reports → Nginx (SSL/TLS) → Flask App → RabbitMQ Cluster → Worker → Elasticsearch
 ```
 
 ### Components:
@@ -13,7 +13,7 @@ CSP Reports → Nginx (SSL/TLS) → Flask App → RabbitMQ Cluster → Worker �
 - **Flask App**: CSP report receiver and validator
 - **RabbitMQ Cluster**: Message queue (3-node cluster for HA)
 - **Worker**: Processes and forwards reports to storage
-- **Elasticsearch**: Local storage and indexing (optional)
+- **Elasticsearch**: Storage and indexing for CSP violation data
 - **Kibana**: Data visualization dashboard
 
 ## 🚀 Quick Start
@@ -69,25 +69,24 @@ docker-compose up -d nginx
 0 2 * * * cd /path/to/project && docker-compose stop nginx && docker-compose --profile certbot run --rm certbot renew --quiet && docker-compose up -d nginx
 ```
 
-## 🏢 Enterprise Integration
+## 🏢 External Elasticsearch Integration
 
-### Option 1: Direct to Company Elasticsearch
+To send CSP reports to an external Elasticsearch cluster instead of the local one:
+
 ```bash
-# Update .env
-ELASTICSEARCH_HOSTS=https://your-company-es-cluster.com:9200
+# Update .env file
+ELASTICSEARCH_HOSTS=https://your-external-es-cluster.com:9200
+
+# If authentication is required:
 ELASTICSEARCH_USERNAME=your_username
 ELASTICSEARCH_PASSWORD=your_password
+# or
+ELASTICSEARCH_API_KEY=your_api_key
+
+# For SSL/TLS with custom certificates:
+ELASTICSEARCH_CA_CERTS=/path/to/ca-certificates.pem
 ```
 
-### Option 2: Via Kafka Pipeline  
-```bash
-# Update .env
-KAFKA_BOOTSTRAP_SERVERS=kafka1:9092,kafka2:9092
-KAFKA_TOPIC=csp-violations
-KAFKA_SECURITY_PROTOCOL=SASL_SSL
-KAFKA_SASL_USERNAME=your_username
-KAFKA_SASL_PASSWORD=your_password
-```
 
 ## 📊 Monitoring & Analytics
 
@@ -135,7 +134,7 @@ csp-reporting-server/
 ### `example.env`
 Complete environment variable template with:
 - RabbitMQ cluster settings
-- Elasticsearch/Kafka configuration
+- Elasticsearch configuration
 - SSL/TLS settings
 - Performance tuning parameters
 
@@ -168,8 +167,8 @@ All environments can send to the same endpoint - filter by `document-uri` in Ela
 1. **Browser** sends CSP violation to `/csp-report`
 2. **Nginx** applies rate limiting and forwards to Flask
 3. **Flask app** validates and queues report in RabbitMQ
-4. **Worker** processes queue and sends to Elasticsearch/Kafka
-5. **Data** available for analysis in Kibana or your tools
+4. **Worker** processes queue and sends to Elasticsearch
+5. **Data** available for analysis in Kibana
 
 ## 🤝 Contributing
 
@@ -180,4 +179,24 @@ All environments can send to the same endpoint - filter by `document-uri` in Ela
 
 ## 📜 License
 
-[Your License Here]
+MIT License
+
+Copyright (c) 2025 bifr0est
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
