@@ -57,7 +57,7 @@ def init_elasticsearch_client():
                 return True
             else:
                 logging.warning(f"Elasticsearch ping failed on connection attempt {attempt + 1}.")
-                Exception(f"Elasticsearch ping failed on attempt {attempt + 1}")
+                
         except es_exceptions.ConnectionError as e:
             logging.warning(f"Elasticsearch connection attempt {attempt + 1} failed: {e}")
         except Exception as e:
@@ -93,9 +93,8 @@ def flush_es_batch(channel):
             except Exception as e_nack_conn_down:
                 logging.error(f"Failed to NACK message (delivery_tag: {delivery_tag}) during ES down flush: {e_nack_conn_down}")
         es_bulk_batch.clear()
-        if not es_client:
-             if not init_elasticsearch_client(): 
-                 logging.error("Failed to re-initialize ES client during flush after it was down.")
+        if not es_client and not init_elasticsearch_client():
+            logging.error("Failed to re-initialize ES client during flush after it was down.")
         return False 
 
     logging.info(f"Flushing batch of {len(es_bulk_batch)} reports to Elasticsearch...")
@@ -198,7 +197,7 @@ def process_report_message(ch, method, properties, body):
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
 
-def on_shutdown_signal(signum, frame, rmq_conn, rmq_chan):
+def on_shutdown_signal(signum, frame):
     """Handles shutdown signals for graceful exit."""
     global shutdown_requested
     logging.info(f"Received shutdown signal {signum}. Initiating graceful shutdown...")
@@ -252,8 +251,8 @@ def main():
     channel = None
     last_flush_time = time.time()
 
-    signal.signal(signal.SIGINT, lambda s, f: on_shutdown_signal(s, f, rmq_connection, channel))
-    signal.signal(signal.SIGTERM, lambda s, f: on_shutdown_signal(s, f, rmq_connection, channel))
+    signal.signal(signal.SIGINT, lambda s, f: on_shutdown_signal(s, f))
+    signal.signal(signal.SIGTERM, lambda s, f: on_shutdown_signal(s, f))
 
     if not init_elasticsearch_client():
         logging.warning("Elasticsearch client failed to initialize on startup. Worker will attempt to initialize/re-check.")

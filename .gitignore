@@ -54,4 +54,3 @@ Thumbs.db
 *.crt
 *.key
 !nginx/certs/fullchain.pem
-!nginx/certs/privkey.pem
