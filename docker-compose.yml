@@ -25,6 +25,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REPORTING_SECRET_TOKEN=${REPORTING_SECRET_TOKEN}
       - RABBITMQ_NODES_CSV=${RABBITMQ_NODES_CSV:-rabbitmq1:5672,rabbitmq2:5672,rabbitmq3:5672}
       - RABBITMQ_USER=${RABBITMQ_USER:-user}
       - RABBITMQ_PASS=${RABBITMQ_PASS:-password}

@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 # --- Configuration ---
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+REPORTING_SECRET_TOKEN = os.environ.get('REPORTING_SECRET_TOKEN')
 
 # RabbitMQ Configuration
 RABBITMQ_NODES_CSV = os.environ.get('RABBITMQ_NODES_CSV', 'rabbitmq:5672')
@@ -80,14 +81,23 @@ def receive_csp_report():
     """
     Receives CSP violation reports via POST request and publishes them to a RabbitMQ queue.
     """
+    # --- Authentication Check ---
+    if REPORTING_SECRET_TOKEN:
+        inbound_token = request.headers.get('X-Report-Token')
+        if inbound_token != REPORTING_SECRET_TOKEN:
+            logging.warning(f"Unauthorized report attempt from IP {request.remote_addr}. Missing or invalid token.")
+            return 'Unauthorized', 401
+    # --- End Authentication Check ---
+
     content_type = request.content_type
     logging.info(f"Received request with Content-Type: {content_type}")
 
     # Strict content type validation - only accept JSON formats for CSP reports
-    if not (content_type == 'application/csp-report' or \
+    if not (content_type == 'application/csp-report' or 
             content_type == 'application/json'):
         logging.warning(f"Unsupported Media Type: {content_type}")
         return 'Unsupported Media Type', 415
+
 
     try:
         # Limit request size to prevent DoS attacks
