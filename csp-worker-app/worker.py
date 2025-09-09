@@ -47,8 +47,6 @@ def init_elasticsearch_client():
         bool: True if client initialized and pinged successfully, False otherwise.
     """
     global es_client
-    auth = None 
-    last_exception = None
     for attempt in range(ES_CONNECTION_RETRIES):
         try:
             logging.info(f"Attempting to connect to Elasticsearch (attempt {attempt + 1}/{ES_CONNECTION_RETRIES})...")
@@ -59,13 +57,11 @@ def init_elasticsearch_client():
                 return True
             else:
                 logging.warning(f"Elasticsearch ping failed on connection attempt {attempt + 1}.")
-                last_exception = Exception(f"Elasticsearch ping failed on attempt {attempt + 1}")
+                Exception(f"Elasticsearch ping failed on attempt {attempt + 1}")
         except es_exceptions.ConnectionError as e:
             logging.warning(f"Elasticsearch connection attempt {attempt + 1} failed: {e}")
-            last_exception = e
         except Exception as e:
             logging.error(f"Unexpected error initializing Elasticsearch client on attempt {attempt + 1}: {e}", exc_info=True)
-            last_exception = e
         
         if attempt + 1 < ES_CONNECTION_RETRIES:
             logging.info(f"Retrying Elasticsearch connection in {ES_RETRY_DELAY} seconds...")
@@ -147,16 +143,22 @@ def flush_es_batch(channel):
         failure_nacks_requeue_false.extend(delivery_tags_for_bulk)
 
     for delivery_tag in success_acks:
-        try: channel.basic_ack(delivery_tag=delivery_tag)
-        except Exception as e_ack: logging.error(f"Error ACKing message {delivery_tag}: {e_ack}")
+        try:
+            channel.basic_ack(delivery_tag=delivery_tag)
+        except Exception as e_ack:
+            logging.error(f"Error ACKing message {delivery_tag}: {e_ack}")
 
     for delivery_tag in failure_nacks_requeue_false:
-        try: channel.basic_nack(delivery_tag=delivery_tag, requeue=False)
-        except Exception as e_nack_f: logging.error(f"Error NACKing (requeue=False) message {delivery_tag}: {e_nack_f}")
+        try:
+            channel.basic_nack(delivery_tag=delivery_tag, requeue=False)
+        except Exception as e_nack_f:
+            logging.error(f"Error NACKing (requeue=False) message {delivery_tag}: {e_nack_f}")
             
     for delivery_tag in failure_nacks_requeue_true:
-        try: channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
-        except Exception as e_nack_t: logging.error(f"Error NACKing (requeue=True) message {delivery_tag}: {e_nack_t}")
+        try:
+            channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        except Exception as e_nack_t:
+            logging.error(f"Error NACKing (requeue=True) message {delivery_tag}: {e_nack_t}")
     
     return True
 
@@ -185,10 +187,10 @@ def process_report_message(ch, method, properties, body):
             logging.info(f"Batch size {len(es_bulk_batch)} reached MAX_SIZE ({BULK_MAX_SIZE}). Flushing...")
             if flush_es_batch(ch):
                 pass # Timer reset is handled by main loop after flush
-    except json.JSONDecodeError as json_err:
+    except json.JSONDecodeError:
         logging.error(f"JSON Decode Error for {report_identifier}. Discarding message: {body!r}", exc_info=True)
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-    except UnicodeDecodeError as ude_err:
+    except UnicodeDecodeError:
         logging.error(f"Unicode Decode Error for {report_identifier}. Discarding message (raw bytes): {body!r}", exc_info=True)
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
     except Exception as e:
@@ -289,7 +291,8 @@ def main():
                 rmq_connection.process_data_events(time_limit=PROCESS_DATA_EVENTS_TIMEOUT)
             else:
                 logging.warning("RabbitMQ connection or channel is not open. Delaying before retry.")
-                if not shutdown_requested: time.sleep(RABBITMQ_RETRY_DELAY)
+                if not shutdown_requested:
+                    time.sleep(RABBITMQ_RETRY_DELAY)
                 continue
 
             current_time = time.time()
@@ -300,22 +303,28 @@ def main():
 
         except pika.exceptions.AMQPConnectionError as amqp_err:
             logging.warning(f"Failed to connect to any RabbitMQ node in list: {amqp_err}. Retrying in {RABBITMQ_RETRY_DELAY}s...")
-            if rmq_connection and rmq_connection.is_open: rmq_connection.close()
+            if rmq_connection and rmq_connection.is_open:
+                rmq_connection.close()
             rmq_connection, channel = None, None
-            if not shutdown_requested: time.sleep(RABBITMQ_RETRY_DELAY)
+            if not shutdown_requested:
+                time.sleep(RABBITMQ_RETRY_DELAY)
         except pika.exceptions.AMQPChannelError as amqp_chan_err:
             logging.error(f"RabbitMQ Channel Error in main loop: {amqp_chan_err}", exc_info=True)
-            if rmq_connection and rmq_connection.is_open: rmq_connection.close()
+            if rmq_connection and rmq_connection.is_open:
+                rmq_connection.close()
             rmq_connection, channel = None, None
-            if not shutdown_requested: time.sleep(RABBITMQ_RETRY_DELAY)
+            if not shutdown_requested:
+                time.sleep(RABBITMQ_RETRY_DELAY)
         except KeyboardInterrupt:
             logging.info("KeyboardInterrupt received in main loop. Initiating shutdown...")
             shutdown_requested = True
         except Exception as e: 
             logging.error(f"Worker main loop encountered an unexpected error: {e}. Retrying...", exc_info=True)
-            if rmq_connection and rmq_connection.is_open: rmq_connection.close()
+            if rmq_connection and rmq_connection.is_open:
+                rmq_connection.close()
             rmq_connection, channel = None, None
-            if not shutdown_requested: time.sleep(RABBITMQ_RETRY_DELAY)
+            if not shutdown_requested:
+                time.sleep(RABBITMQ_RETRY_DELAY)
     
     logging.info("Shutdown requested. Performing final cleanup...")
     if channel and channel.is_open and es_bulk_batch:
