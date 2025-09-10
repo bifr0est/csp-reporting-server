@@ -5,11 +5,11 @@ A production-ready, dockerized solution for receiving, processing, and storing C
 ## 🏗️ Architecture
 
 ```
-CSP Reports → Nginx (SSL/TLS) → Flask App → RabbitMQ Cluster → Worker → Elasticsearch
+CSP Reports → Caddy (Auto-SSL/TLS) → Flask App → RabbitMQ Cluster → Worker → Elasticsearch
 ```
 
 ### Components:
-- **Nginx**: Reverse proxy with rate limiting and SSL termination
+- **Caddy**: Reverse proxy with rate limiting and automatic SSL termination via Let's Encrypt.
 - **Flask App**: CSP report receiver and validator
 - **RabbitMQ Cluster**: Message queue (3-node cluster for HA)
 - **Worker**: Processes and forwards reports to storage
@@ -22,7 +22,9 @@ CSP Reports → Nginx (SSL/TLS) → Flask App → RabbitMQ Cluster → Worker �
 ```bash
 # Copy and configure environment variables
 cp example.env .env
-# Edit .env with your settings
+
+# Edit .env, making sure to set your domain name
+# DOMAIN_NAME=csp-reports.yourcompany.com
 ```
 
 ### 2. Start Services
@@ -34,40 +36,16 @@ docker-compose up -d
 docker-compose ps
 ```
 
+Caddy will automatically provision a production-ready SSL certificate from Let's Encrypt on startup. There are no manual steps required.
+
 ### 3. Test CSP Endpoint
 ```bash
-# Send test report
-curl -k -X POST https://localhost/csp-report \
+# Send test report (use -k if testing with a self-signed cert for localhost)
+curl -k -X POST https://${DOMAIN_NAME:-localhost}/csp-report \
   -H "Content-Type: application/csp-report" \
   -d @test_payloads/csp_report_payload.json
 ```
 
-## 🔐 Production SSL Setup (TLS-ALPN-01)
-
-### 1. Configure Domain
-```bash
-# Update .env file
-DOMAIN_NAME=csp-reports.yourcompany.com
-CERTBOT_EMAIL=admin@yourcompany.com
-```
-
-### 2. Generate SSL Certificate
-```bash
-# Stop nginx temporarily
-docker-compose stop nginx
-
-# Generate Let's Encrypt certificate
-docker-compose --profile certbot run --rm certbot
-
-# Start nginx with SSL
-docker-compose up -d nginx
-```
-
-### 3. Setup Auto-Renewal
-```bash
-# Add to crontab
-0 2 * * * cd /path/to/project && docker-compose stop nginx && docker-compose --profile certbot run --rm certbot renew --quiet && docker-compose up -d nginx
-```
 
 ## 🏢 External Elasticsearch Integration
 
@@ -116,12 +94,11 @@ curl "http://localhost:9200/csp-violations-*/_search" -d '{
 
 ```
 csp-reporting-server/
+├── caddy/
+│   └── Caddyfile               # Caddy configuration
 ├── docker-compose.yml          # Main orchestration
 ├── example.env                 # Configuration template
 ├── .gitignore                  # Git ignore rules
-├── nginx/
-│   ├── nginx.conf              # Production nginx config
-│   └── certs/                  # SSL certificates directory
 ├── csp-receiver-app/           # Flask CSP receiver
 ├── csp-worker-app/             # Message processor
 ├── rabbitmq/                   # RabbitMQ configuration
@@ -143,11 +120,12 @@ Elasticsearch index template for optimal CSP data storage and search performance
 
 ## 🚨 Security Features
 
-- **Rate Limiting**: 5 req/sec per IP, burst up to 10
-- **SSL/TLS Encryption**: Modern cipher suites, TLS 1.2+
-- **Security Headers**: HSTS, XSS protection, content sniffing prevention
-- **Input Validation**: CSP report format validation
-- **Request Size Limits**: 2MB max per request
+- **Automatic HTTPS**: Caddy automatically provisions and renews SSL/TLS certificates from Let's Encrypt.
+- **Rate Limiting**: 5 req/sec per IP, burst up to 10, handled by Caddy.
+- **SSL/TLS Encryption**: Modern cipher suites and protocols (TLS 1.2+) managed by Caddy.
+- **Security Headers**: HSTS, XSS protection, content sniffing prevention.
+- **Input Validation**: CSP report format validation.
+- **Request Size Limits**: Enforced by the reverse proxy.
 
 ## Securing the Report Endpoint (Recommended)
 
@@ -182,6 +160,19 @@ In your web application, change the `report-uri` directive to point to a local p
 ### Step 3: Configure Your Web Server Proxy
 
 Add the following configuration to your main application's web server.
+
+#### Caddy Example
+```caddy
+# On your main application server (e.g., www.your-app-domain.com)
+
+@csp_proxy path /csp-report-proxy
+reverse_proxy @csp_proxy https://csp-reports.your-domain.com/csp-report {
+    # Add the secret token header to match the one in your .env file
+    header_up X-Report-Token "YOUR_RANDOMLY_GENERATED_SECRET_TOKEN"
+    # Pass along the original client's IP address
+    header_up X-Forwarded-For {remote_ip}
+}
+```
 
 #### Nginx Example
 ```nginx
@@ -231,7 +222,7 @@ All environments can send to the same endpoint - filter by `document-uri` in Ela
 
 ### Data Flow
 1. **Browser** sends CSP violation to `/csp-report`
-2. **Nginx** applies rate limiting and forwards to Flask
+2. **Caddy** applies rate limiting, provides SSL, and forwards to Flask
 3. **Flask app** validates and queues report in RabbitMQ
 4. **Worker** processes queue and sends to Elasticsearch
 5. **Data** available for analysis in Kibana

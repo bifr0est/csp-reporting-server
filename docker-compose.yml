@@ -1,18 +1,20 @@
 services:
-  nginx:
-    image: nginx:stable
-    container_name: csp_nginx
+  caddy:
+    image: caddy:latest
+    container_name: csp_caddy
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
     depends_on:
       - csp-receiver
     networks:
       - csp-net
-    restart: unless-stopped
 
   csp-receiver:
     build:
@@ -158,18 +160,8 @@ services:
       - csp-net
     restart: unless-stopped
 
-  # --- Certbot for TLS-ALPN-01 (run manually) ---
-  certbot:
-    image: certbot/certbot:latest
-    container_name: csp_certbot
-    volumes:
-      - ./nginx/certs:/etc/letsencrypt
-    network_mode: host  # Required for TLS-ALPN-01
-    profiles:
-      - certbot  # Only run when explicitly called
-    command: certonly --standalone --preferred-challenges tls-alpn-01 --email ${CERTBOT_EMAIL:-admin@example.com} --agree-tos --no-eff-email -d ${DOMAIN_NAME:-localhost}
-
-volumes:
+  volumes:
+  caddy_data:
   rabbitmq1_data:
   rabbitmq2_data:
   rabbitmq3_data:
