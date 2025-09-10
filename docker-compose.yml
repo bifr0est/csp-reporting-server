@@ -159,7 +159,7 @@ services:
       - csp-net
     restart: unless-stopped
 
-  volumes:
+volumes:
   caddy_data:
   rabbitmq1_data:
   rabbitmq2_data:
