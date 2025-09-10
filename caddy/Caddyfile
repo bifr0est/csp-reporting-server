@@ -4,39 +4,46 @@
 }
 
 # Get domain name from environment variable, fallback to localhost
-{$DOMAIN_NAME:-localhost}
+{$DOMAIN_NAME:-localhost} {
+    # TLS configuration to explicitly use tls-alpn-01
+    tls {
+        issuer acme {
+            challenge tls-alpn-01
+        }
+    }
 
-# Enforce HTTPS and handle certificate management automatically
-@csp_report_path path /csp-report
-@health_path path /health
+    # Enforce HTTPS and handle certificate management automatically
+    @csp_report_path path /csp-report
+    @health_path path /health
 
-# Rate limit CSP endpoint: 5 requests/sec, burst of 10
-rate_limit @csp_report_path {
-    rate 5r/s
-    burst 10
+    # Rate limit CSP endpoint: 5 requests/sec, burst of 10
+    rate_limit @csp_report_path {
+        rate 5r/s
+        burst 10
+    }
+
+    # Reverse proxy for the CSP receiver app
+    reverse_proxy @csp_report_path http://csp-receiver:5000 {
+        # Set headers to pass client info to the backend
+        header_up Host {host}
+        header_up X-Real-IP {remote_ip}
+        header_up X-Forwarded-For {remote_ip}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Health check endpoint
+    respond @health_path "OK" 200
+
+    # Set security headers for all responses
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-XSS-Protection "1; mode=block"
+        # Strict-Transport-Security is often added automatically by Caddy
+        # but can be specified here if needed.
+    }
+
+    # Reject all other requests
+    respond "Not Found" 404
 }
-
-# Reverse proxy for the CSP receiver app
-reverse_proxy @csp_report_path http://csp-receiver:5000 {
-    # Set headers to pass client info to the backend
-    header_up Host {host}
-    header_up X-Real-IP {remote_ip}
-    header_up X-Forwarded-For {remote_ip}
-    header_up X-Forwarded-Proto {scheme}
-}
-
-# Health check endpoint
-respond @health_path "OK" 200
-
-# Set security headers for all responses
-header {
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    X-XSS-Protection "1; mode=block"
-    # Strict-Transport-Security is often added automatically by Caddy
-    # but can be specified here if needed.
-}
-
-# Reject all other requests
-respond "Not Found" 404
