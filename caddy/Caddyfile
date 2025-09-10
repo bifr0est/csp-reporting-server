@@ -4,46 +4,51 @@
 }
 
 # Get domain name from environment variable, fallback to localhost
-{$DOMAIN_NAME:-localhost}
+{$DOMAIN_NAME:-localhost} {
 
-# Enforce HTTPS and handle certificate management automatically
-@csp_report_path path /csp-report
-@health_path path /health
-
-# Rate limit CSP endpoint: 5 requests/sec (10 events per 2s), per IP
-rate_limit {
-    zone csp {
-        match {
-            path /csp-report
+    # Rate limit CSP endpoint: 5 requests/sec (10 events per 2s), per IP
+    rate_limit {
+        zone csp {
+            match {
+                path /csp-report
+            }
+            key {remote_host}
+            window 2s
+            events 10
         }
-        key {remote_host}
-        window 2s
-        events 10
     }
+
+    route /csp-report {
+        @post_csp_report {
+            method POST
+        }
+        reverse_proxy @post_csp_report http://csp-receiver:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_ip}
+            header_up X-Forwarded-For {remote_ip}
+            header_up X-Forwarded-Proto {scheme}
+        }
+
+        # For any other method (like GET) to /csp-report, return 405
+        respond * 405 {
+            close
+        }
+    }
+
+    # Health check endpoint
+    respond /health "OK" 200
+
+    # Set security headers for all responses
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-XSS-Protection "1; mode=block"
+        # Strict-Transport-Security is often added automatically by Caddy
+        # but can be specified here if needed.
+    }
+
+    # Reject all other requests
+    respond "Not Found" 404
 }
-
-# Reverse proxy for the CSP receiver app
-reverse_proxy @csp_report_path http://csp-receiver:5000 {
-    # Set headers to pass client info to the backend
-    header_up Host {host}
-    header_up X-Real-IP {remote_ip}
-    header_up X-Forwarded-For {remote_ip}
-    header_up X-Forwarded-Proto {scheme}
-}
-
-# Health check endpoint
-respond @health_path "OK" 200
-
-# Set security headers for all responses
-header {
-    -Server
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    X-XSS-Protection "1; mode=block"
-    # Strict-Transport-Security is often added automatically by Caddy
-    # but can be specified here if needed.
-}
-
-# Reject all other requests
-respond "Not Found" 404
