@@ -29,8 +29,8 @@
             header_up X-Forwarded-Proto {scheme}
         }
 
-        # For any other method (like GET) to /csp-report, return 405
-        respond * 405 {
+        # For any other method (like GET) to /csp-report, return 418
+        respond * 418 {
             close
         }
     }

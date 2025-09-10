@@ -54,3 +54,6 @@ Thumbs.db
 *.crt
 *.key
 !nginx/certs/fullchain.pem
+
+#Ruff caches
+.ruff_cache/
