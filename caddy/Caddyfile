@@ -36,6 +36,7 @@ respond @health_path "OK" 200
 
 # Set security headers for all responses
 header {
+    -Server
     X-Content-Type-Options "nosniff"
     X-Frame-Options "DENY"
     Referrer-Policy "strict-origin-when-cross-origin"
