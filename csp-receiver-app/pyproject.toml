@@ -1,0 +1,10 @@
+[project]
+name = "csp-receiver"
+version = "0.1.0"
+description = "CSP violation report receiver - Flask API with RabbitMQ queueing"
+requires-python = ">=3.13"
+dependencies = [
+    "flask~=3.1.1",
+    "gunicorn~=23.0.0",
+    "pika~=1.3.2",
+]

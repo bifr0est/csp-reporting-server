@@ -19,14 +19,28 @@
     }
 
     route /csp-report {
+        # IP allowlist for CSP endpoint - only allow configured web servers
+        @allowed_web_servers {
+            remote_ip {$CSP_ALLOWED_IPS:-127.0.0.1}
+        }
+        
         @post_csp_report {
             method POST
         }
-        reverse_proxy @post_csp_report http://csp-receiver:5000 {
-            header_up Host {host}
-            header_up X-Real-IP {remote_ip}
-            header_up X-Forwarded-For {remote_ip}
-            header_up X-Forwarded-Proto {scheme}
+        
+        # Handle POST requests from allowed IPs
+        handle @post_csp_report {
+            reverse_proxy @allowed_web_servers http://csp-receiver:5000 {
+                header_up Host {host}
+                header_up X-Real-IP {remote_ip}
+                header_up X-Forwarded-For {remote_ip}
+                header_up X-Forwarded-Proto {scheme}
+            }
+            
+            # Block POST requests from unauthorized IPs with 418 "I'm a teapot"
+            respond * "I'm a teapot" 418 {
+                close
+            }
         }
 
         # For any other method (like GET) to /csp-report, return 418

@@ -1,0 +1,9 @@
+[project]
+name = "csp-worker"
+version = "0.1.0"
+description = "CSP report processor - RabbitMQ consumer with Elasticsearch bulk indexing"
+requires-python = ">=3.13"
+dependencies = [
+    "elasticsearch==9.1.0",
+    "pika~=1.3.2",
+]
