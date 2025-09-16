@@ -9,7 +9,6 @@ app = Flask(__name__)
 
 # --- Configuration ---
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
-REPORTING_SECRET_TOKEN = os.environ.get('REPORTING_SECRET_TOKEN')
 
 # RabbitMQ Configuration
 RABBITMQ_NODES_CSV = os.environ.get('RABBITMQ_NODES_CSV', 'rabbitmq:5672')
@@ -81,22 +80,21 @@ def receive_csp_report():
     """
     Receives CSP violation reports via POST request and publishes them to a RabbitMQ queue.
     """
-    # --- Authentication Check ---
-    if REPORTING_SECRET_TOKEN:
-        inbound_token = request.headers.get('X-Report-Token')
-        if inbound_token != REPORTING_SECRET_TOKEN:
-            logging.warning(f"Unauthorized report attempt from IP {request.remote_addr}. Missing or invalid token.")
-            return 'Unauthorized', 401
-    # --- End Authentication Check ---
 
     content_type = request.content_type
     logging.info(f"Received request with Content-Type: {content_type}")
 
-    # Strict content type validation - only accept JSON formats for CSP reports
-    if not (content_type == 'application/csp-report' or 
-            content_type == 'application/json'):
+    # Accept common CSP report content types
+    accepted_content_types = {
+        "application/csp-report",
+        "application/json", 
+        "application/reports+json",
+        "text/plain"
+    }
+    
+    if content_type not in accepted_content_types:
         logging.warning(f"Unsupported Media Type: {content_type}")
-        return 'Unsupported Media Type', 415
+        return "Unsupported Media Type", 415
 
 
     try:
@@ -111,19 +109,72 @@ def receive_csp_report():
             logging.warning("Received empty report data.")
             return 'Empty report data', 400
 
-        # Validate that the payload is valid JSON before queueing
+        # Validate that the payload is valid JSON and has proper CSP structure
         try:
-            report_json = json.loads(report_data_bytes.decode('utf-8'))
-            
-            # Basic CSP report structure validation
+            report_json = json.loads(report_data_bytes.decode("utf-8"))
+
+            # Basic JSON structure validation
             if not isinstance(report_json, dict):
                 logging.warning("Invalid CSP report: not a JSON object")
-                return 'Invalid CSP report format', 400
-                
-            # Check for either 'csp-report' field or direct CSP fields
-            if 'csp-report' not in report_json and 'violated-directive' not in report_json:
-                logging.warning("Invalid CSP report: missing required CSP fields")
-                return 'Invalid CSP report structure', 400
+                return "Invalid CSP report format", 400
+
+            # Extract CSP data from wrapper or direct format
+            if "csp-report" in report_json:
+                csp_data = report_json["csp-report"]
+                if not isinstance(csp_data, dict):
+                    logging.warning("Invalid CSP report: csp-report field is not an object")
+                    return "Invalid CSP report structure", 400
+            else:
+                csp_data = report_json
+
+            # Validate required CSP fields
+            required_fields = ["violated-directive", "document-uri"]
+            missing_fields = [field for field in required_fields if field not in csp_data]
+            
+            if missing_fields:
+                logging.warning(f"Invalid CSP report: missing required fields: {missing_fields}")
+                return "Invalid CSP report structure", 400
+
+            # Validate violated-directive format
+            violated_directive = csp_data.get("violated-directive", "")
+            if not isinstance(violated_directive, str) or not violated_directive.strip():
+                logging.warning("Invalid CSP report: violated-directive must be a non-empty string")
+                return "Invalid CSP report structure", 400
+
+            # Validate document-uri format  
+            document_uri = csp_data.get("document-uri", "")
+            if not isinstance(document_uri, str) or not document_uri.strip():
+                logging.warning("Invalid CSP report: document-uri must be a non-empty string")
+                return "Invalid CSP report structure", 400
+
+            # Validate string fields if present (can be empty)
+            string_fields = ["blocked-uri", "referrer", "effective-directive", "original-policy", 
+                           "disposition", "source-file", "script-sample"]
+            for field in string_fields:
+                if field in csp_data and not isinstance(csp_data[field], str):
+                    logging.warning(f"Invalid CSP report: {field} must be a string")
+                    return "Invalid CSP report structure", 400
+
+            # Validate integer fields if present
+            int_fields = ["line-number", "column-number", "status-code"]
+            for field in int_fields:
+                if field in csp_data and not isinstance(csp_data[field], int):
+                    logging.warning(f"Invalid CSP report: {field} must be an integer")
+                    return "Invalid CSP report structure", 400
+
+            # Limit object depth to prevent deeply nested JSON attacks
+            def check_json_depth(obj, max_depth=5, current_depth=0):
+                if current_depth > max_depth:
+                    return False
+                if isinstance(obj, dict):
+                    return all(check_json_depth(v, max_depth, current_depth + 1) for v in obj.values())
+                elif isinstance(obj, list):
+                    return all(check_json_depth(item, max_depth, current_depth + 1) for item in obj)
+                return True
+
+            if not check_json_depth(report_json):
+                logging.warning("Invalid CSP report: JSON structure too deeply nested")
+                return "Invalid CSP report structure", 400
                 
         except json.JSONDecodeError as e:
             logging.warning(f"Invalid JSON in CSP report: {e}")
